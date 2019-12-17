@@ -4,7 +4,7 @@ CONFIG = {}
 
 def load():
     global CONFIG
-    with open("config.yaml") as file:
+    with open("config.yaml", encoding="UTF8") as file:
         CONFIG = yaml.load(file, Loader=yaml.FullLoader)
     print(CONFIG)
 

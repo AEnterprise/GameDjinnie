@@ -3,33 +3,33 @@ from enum import IntEnum
 from tortoise.models import Model
 from tortoise import fields
 
-
 class TestStatus(IntEnum):
     STARTED = 0
-    END_PHASE = 1
+    ENDING = 1
     ENDED = 2
 
-
-class GameTest(Model):
+class Game(Model):
     id = fields.IntField(pk=True)
-    announcement = fields.BigIntField()
-    reaction = fields.CharField(max_length=16)  # just to be safe with unicode shenanigans
-    ends_at = fields.DatetimeField()
-    status = fields.IntEnumField(TestStatus, default=TestStatus.STARTED)
+    name = fields.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
 
 
 class GameCode(Model):
     code = fields.CharField(pk=True, max_length=50)
     claimed_by = fields.BigIntField(null=True)
-    game_test = fields.ForeignKeyField("models.GameTest", related_name="codes")
+    game = fields.ForeignKeyField("models.Game", related_name="codes")
+
+    def __str__(self):
+        return self.code
 
 
-class ParticipantStatus(IntEnum):
-    PARTICIPATED = 0
-    NOT_PARTICIPATED = 1
+class GameTest(Model):
+    game = fields.ForeignKeyField("models.Game", related_name="announcements")
+    message = fields.BigIntField()
+    end = fields.DatetimeField()
+    status = fields.IntEnumField(TestStatus, default=TestStatus.STARTED)
 
-
-class Participants(Model):
-    game_test = fields.ForeignKeyField("models.GameTest", related_name="participants")
-    user = fields.BigIntField()
-    status = fields.IntEnumField(ParticipantStatus, default=ParticipantStatus.PARTICIPATED)
+    def __str__(self):
+        return f"Test {self.game}-{self.message}: {self.status} (end at {self.end})"

@@ -8,7 +8,8 @@ from discord.ext.commands import Cog
 from tortoise.exceptions import DoesNotExist
 
 from Utils import Configuration, Questions
-from Utils.Models import GameCode, GameTest, TestStatus
+from Utils.Converters import GameConverter, dateConverter
+from Utils.Models import GameCode, Game, GameTest
 
 
 class GameTesting(Cog):
@@ -16,77 +17,64 @@ class GameTesting(Cog):
         self.bot = bot
 
     @commands.command()
-    async def start_test(self, ctx):
-        member = self.bot.get_guild(Configuration.get_var("guild_id")).get_member(ctx.author.id)
-        if member is None:
-            return
-        role_id = Configuration.get_var("dev_role")
-        if not member.roles or not any(r.id == role_id for r in member.roles):
-            return
-
+    async def add_game(self, ctx, *, name: str):
+        name = name.lower().replace(" ", "_")
         try:
-            m = await ctx.author.send("Starting a new game test!")
-
-            async def date_checker(d):
-                try:
-                    parsed = parse(d)
-                except ParserError as ex:
-                    return f"Unable to parse that as a valid end datetime. Please try something like <day>/<month>/<year> <hour>:<minutes> ?"
-                if datetime.now().toordinal() > parsed.toordinal():
-                    "End times can not be in the past"
-
-                return True
-
-            until = await Questions.ask_text(self.bot, ctx.author.dm_channel, ctx.author,
-                                             "Until when should this test run? Please provide a timestamp", validator=date_checker)
-
-            until = parse(until)
+            await Game.get(name=name)
+            await ctx.send(f"A game named {name} already exists!")
+        except DoesNotExist:
+            await Game.create(name=name)
+            await ctx.send(f"Added {name} to the list of games!")
 
 
-            async def reaction_checker(v):
-                try:
-                    await m.add_reaction(v)
-                except HTTPException:
-                    return "Not a valid reaction"
-                return True
+    @commands.command()
+    async def add_codes(self, ctx, game: GameConverter):
+        if len(ctx.message.attachments) is not 1:
+            await ctx.send("Please send the txt file with codes with the command")
+        else:
+            try:
+                codes = (await ctx.message.attachments[0].read()).decode().splitlines()
+            except Exception:
+                await ctx.send(
+                    "Something went wrong reading that file, please make sure the file is valid and try again")
+            else:
+                for c in await GameCode.filter(code__in=codes):
+                    codes.remove(c.code)
+                await GameCode.bulk_create([GameCode(code=c, game=game) for c in codes])
+                await ctx.send(f"Successfully imported {len(codes)} codes for {game}!")
 
+    @commands.command()
+    async def remove_codes(self, ctx):
+        if len(ctx.message.attachments) is not 1:
+            await ctx.send("Please send the txt file with codes with the command")
+        else:
+            try:
+                codes = (await ctx.message.attachments[0].read()).decode().splitlines()
+            except Exception:
+                await ctx.send(
+                    "Something went wrong reading that file, please make sure the file is valid and try again")
+            else:
+                await GameCode.filter(code__in=codes).delete()
+                await ctx.send(f"Successfully deleted those codes!")
 
-
-            reaction = await Questions.ask_text(self.bot, ctx.author.dm_channel, ctx.author, "Please send the emoji to use as reaction for testers", validator=reaction_checker)
-
-            announcement = await Questions.ask_text(self.bot, ctx.author.dm_channel, ctx.author, "What text should be used as announcement?",)
-            codes = []
-            while len(codes) is 0:
-                attachment = await Questions.ask_attachement(self.bot, ctx.author.dm_channel, ctx.author, "Please upload the game codes in a txt file, 1 code per line")
-                try:
-                    codes = (await attachment.read()).decode().splitlines()
-                except Exception:
-                    await ctx.author.send("Something went wrong reading that file, please make sure the file is valid and try again")
-
-                for code in codes.copy():
-                    if len(code) > 50:
-                        codes.remove(code)
-                    try:
-                        await GameCode.get(code=code)
-                        codes.remove(code)
-                    except DoesNotExist:
-                        pass # code is good
-                if len(codes) is 0:
-                    await ctx.author.send("No valid codes found in that file, please try again")
-
-
-            await ctx.author.send("Processing...")
-
-            message = await self.bot.get_channel(Configuration.get_var("announcement_channel")).send(announcement)
+    @commands.command()
+    async def test(self, ctx, game: GameConverter, until: dateConverter, *, announcement):
+        channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+        role = channel.guild.get_role(Configuration.get_var("tester_role"))
+        reaction = Configuration.get_var("reaction_emoji")
+        await role.edit(mentionable=True)
+        # wrap everything so we always make the role unmentionable in all cases
+        try:
+            message = await channel.send(f"{announcement}\n{role.mention}")
             await message.add_reaction(reaction)
+            gt = await GameTest.create(game=game, message=message.id, end=until)
+            print(gt)
+        except Exception as ex:
+            await role.edit(mentionable=False)
+            raise ex
 
-            game_test = await GameTest.create(announcement=message.id, reaction=reaction, ends_at=until)
-            for code in codes:
-                await GameCode.create(game_test=game_test,code=code)
 
 
-        except Forbidden:
-            await ctx.send("🚫 Unable to DM you, please allow DMs from this server and try again. You can close them again after")
 
 
 
