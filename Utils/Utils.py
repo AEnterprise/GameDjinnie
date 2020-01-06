@@ -6,7 +6,7 @@ from aiohttp import ClientOSError, ServerDisconnectedError
 from discord import ConnectionClosed, Embed, Colour
 from discord.abc import PrivateChannel
 
-from Utils import Logging
+from Utils import Logging, Configuration
 
 
 def extract_info(o):
@@ -133,3 +133,17 @@ def escape_markdown(text):
     for c in ["\\", "*", "_", "~", "|", "{", ">"]:
         text = text.replace(c, f"\\{c}")
     return text.replace("@", "@\u200b")
+
+
+def with_role_ping(func):
+    async def wrapper(self, *args, **kwargs):
+        channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+        role = channel.guild.get_role(Configuration.get_var("tester_role"))
+        await role.edit(mentionable=True)
+        # wrap everything so we always make the role unmentionable in all cases
+        try:
+            await func(self, *args, **kwargs)
+        finally:
+            await role.edit(mentionable=False)
+
+    return wrapper

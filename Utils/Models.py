@@ -27,9 +27,9 @@ class GameCode(Model):
 
 class GameTest(Model):
     game = fields.ForeignKeyField("models.Game", related_name="announcements")
-    message = fields.BigIntField()
+    message = fields.BigIntField(unique=True)
     end = fields.DatetimeField()
     status = fields.IntEnumField(TestStatus, default=TestStatus.STARTED)
 
     def __str__(self):
-        return f"Test {self.game}-{self.message}: {self.status} (end at {self.end})"
+        return f"Test {self.game}-{self.message}: {TestStatus._value2member_map_[self.status]} (end at {self.end})"
