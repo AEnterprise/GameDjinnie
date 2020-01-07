@@ -211,11 +211,11 @@ class GameTesting(Cog):
 
     @commands.command()
     async def used_codes(self, ctx, game: GameConverter):
-        # fecth used codes
+        # fetch used codes
         codes = await GameCode.filter(game=game, claimed_by__not_isnull=True).prefetch_related("game")
         # create buffer, don't bother saving to disk
         buffer = StringIO()
-        writer = csv.writer(buffer, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer = csv.writer(buffer, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         # write codes to the writer
         for c in codes:
             writer.writerow([c.code, c.claimed_by, c.game.name])

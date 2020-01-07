@@ -2,3 +2,6 @@ venv
 logs
 config.yaml
 .idea
+client_secret.json
+codes.txt
+db.sqlite3
