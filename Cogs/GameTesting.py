@@ -5,19 +5,21 @@ from io import BytesIO, StringIO
 from parser import ParserError
 
 import discord
+import gspread
 from dateutil.parser import parse
 from discord import Forbidden, HTTPException, RawReactionActionEvent, Object, Embed
 from discord.ext import commands, tasks
 from discord.ext.commands import Cog
+from oauth2client.service_account import ServiceAccountCredentials
 from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Q
 from tortoise.transactions import atomic
 
 import humanize
 
-from Utils import Configuration, Questions, Logging
-from Utils.Converters import GameConverter, dateConverter, TestConverter
-from Utils.Models import GameCode, Game, GameTest, TestStatus
+from Utils import Configuration, Questions, Logging, SheetUtils
+from Utils.Converters import GameConverter, dateConverter, TestConverter, Sheetconverter
+from Utils.Models import GameCode, Game, GameTest, TestStatus, Completion
 from Utils.Utils import with_role_ping
 
 
@@ -68,15 +70,15 @@ class GameTesting(Cog):
                 await GameCode.filter(code__in=codes).delete()
                 await ctx.send(f"Successfully deleted those codes!")
 
-    @with_role_ping
     @commands.command()
-    async def test(self, ctx, game: GameConverter, until: dateConverter, *, announcement):
+    @with_role_ping()
+    async def test(self, ctx, game: GameConverter, until: dateConverter, sheet_url: Sheetconverter, *, announcement):
         channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
         role = channel.guild.get_role(Configuration.get_var("tester_role"))
         reaction = Configuration.get_var("reaction_emoji")
         message = await channel.send(f"{announcement}\n{role.mention}")
         await message.add_reaction(reaction)
-        gt = await GameTest.create(game=game, message=message.id, end=until)
+        gt = await GameTest.create(game=game, message=message.id, end=until, feedback=sheet_url)
         await ctx.send(f"Test running until {humanize.naturaldate(gt.end)} has started!")
 
     @commands.Cog.listener()
@@ -185,8 +187,7 @@ class GameTesting(Cog):
 
     async def scheduler(self):
         # schedule 24 notices
-        for t in await GameTest.filter(status=TestStatus.STARTED, end__lt=datetime.now() + timedelta(days=1),
-                                       end__gt=datetime.now()):
+        for t in await GameTest.filter(status=TestStatus.STARTED, end__lt=datetime.now() + timedelta(days=1)):
             self.bot.loop.create_task(self.delayer((t.end - datetime.now()).total_seconds(), self.reminder(t)))
 
         # schedule ending of the tests
@@ -197,7 +198,7 @@ class GameTesting(Cog):
         await asyncio.sleep(delay)
         await todo
 
-    @with_role_ping
+    @with_role_ping()
     async def reminder(self, test):
         channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
         await channel.send(
@@ -205,9 +206,18 @@ class GameTesting(Cog):
         test.status = TestStatus.ENDING
         await test.save()
 
+    @atomic()
     async def ender(self, test):
+        # edit message to say this test is completed
+        channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+        message = await channel.fetch_message(test.message)
+        await message.edit(content=f"~~{message.content}~~\n**This test has ended**")
+        # mark as completed in the database
         test.status = TestStatus.ENDED
         await test.save()
+        # find all users who filled in the feedback
+        sheet = SheetUtils.get_sheet(test.feedback)
+        await Completion.bulk_create([Completion(test=test, user=u) for u in sheet.col_values(2)[1:]])
 
     @commands.command()
     async def used_codes(self, ctx, game: GameConverter):
@@ -222,6 +232,40 @@ class GameTesting(Cog):
         buffer.seek(0)
         file = discord.File(buffer, "Used codes.csv")
         await ctx.send(file=file)
+
+    @tasks.loop(hours=1)
+    async def report_task(self):
+        now = datetime.now()
+        if now.weekday() == 5 and now.hour == 17:
+            await self._report(self.bot.get_user(Configuration.get_var("admin_id")))
+
+    @commands.command()
+    async def report(self, ctx):
+        await self._report(ctx)
+
+    async def _report(self, channel):
+        # did a test end this week?
+        completed = await GameTest.filter(end__gt=datetime.now() - timedelta(days=7), status=TestStatus.ENDED).count()
+        if completed is 0:
+            embed = Embed(title="Weekly report", description="No tests have ended this week, nothing new to report")
+        else:
+            announcement_channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+            # everyone who filled in feedback for the last 3 tests
+            feedback_providers = set(
+                c.user for test in await GameTest.filter().order_by("-end").limit(3).prefetch_related("completions") for
+                c in test.completions)
+            # all testers
+            testers = set(
+                m.id for m in announcement_channel.guild.get_role(Configuration.get_var("tester_role")).members)
+            # report those who didn't contribute
+            slackers = testers - feedback_providers
+            embed = Embed(title="Weekly report",
+                          description=f"**{len(slackers)} user{'s' if len(slackers) > 1 else ''} did not provide feedback in the last 3 tests:**\n" + "\n".join(
+                              f"{str(self.bot.get_user(s))} ({s})" for s in slackers))
+            embed.add_field(name="Tests completed", value=str(completed))
+            embed.add_field(name="Total testers", value=str(len(testers)))
+            embed.add_field(name="Users who provided feedback", value=str(len(feedback_providers)))
+        await channel.send(embed=embed)
 
 
 def setup(bot):

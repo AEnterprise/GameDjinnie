@@ -1,6 +1,7 @@
 import time
 import traceback
 from datetime import datetime
+from functools import wraps
 
 from aiohttp import ClientOSError, ServerDisconnectedError
 from discord import ConnectionClosed, Embed, Colour
@@ -135,15 +136,18 @@ def escape_markdown(text):
     return text.replace("@", "@\u200b")
 
 
-def with_role_ping(func):
-    async def wrapper(self, *args, **kwargs):
-        channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
-        role = channel.guild.get_role(Configuration.get_var("tester_role"))
-        await role.edit(mentionable=True)
-        # wrap everything so we always make the role unmentionable in all cases
-        try:
-            await func(self, *args, **kwargs)
-        finally:
-            await role.edit(mentionable=False)
+def with_role_ping():
+    def wrapper(func):
+        @wraps(func)
+        async def wrapped(self, *args, **kwargs):
+            channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+            role = channel.guild.get_role(Configuration.get_var("tester_role"))
+            await role.edit(mentionable=True)
+            # wrap everything so we always make the role unmentionable in all cases
+            try:
+                await func(self, *args, **kwargs)
+            finally:
+                await role.edit(mentionable=False)
 
+        return wrapped
     return wrapper

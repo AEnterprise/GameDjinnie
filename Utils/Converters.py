@@ -2,6 +2,7 @@ from datetime import datetime
 
 from discord.ext import commands
 from discord.ext.commands import BadArgument
+from gspread import SpreadsheetNotFound
 from tortoise.exceptions import DoesNotExist
 
 from parser import ParserError
@@ -9,6 +10,7 @@ from parser import ParserError
 from dateutil.parser import parse
 from tortoise.query_utils import Q
 
+from Utils import SheetUtils
 from Utils.Models import Game, GameTest
 
 
@@ -37,3 +39,16 @@ class TestConverter(commands.Converter):
             return await GameTest.get(Q(id=argument, message=argument, join_type="OR"))
         except DoesNotExist:
             raise BadArgument("Unknown test")
+
+
+class Sheetconverter(commands.Converter):
+    async def convert(self, ctx, argument):
+        # make sure it wasn't used already
+        if await GameTest.get_or_none(feedback=argument) is not None:
+            raise BadArgument("This sheet was already used for a previous test!")
+        try:
+            SheetUtils.get_sheet(argument)
+        except SpreadsheetNotFound:
+            raise BadArgument("Invalid link, please make sure it is shared with the bot email")
+        else:
+            return argument
