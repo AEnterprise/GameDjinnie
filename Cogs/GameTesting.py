@@ -174,6 +174,7 @@ class GameTesting(Cog):
         await message.edit(content=f"{new_content}\n<@&{Configuration.get_var('tester_role')}>")
         await ctx.send("Message updated!")
 
+    @commands.command()
     async def update_end_time(self, ctx, test: TestConverter, *, new_time: dateConverter):
         # set new end time
         test.end = new_time
