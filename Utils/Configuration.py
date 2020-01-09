@@ -6,7 +6,6 @@ def load():
     global CONFIG
     with open("config.yaml", encoding="UTF8") as file:
         CONFIG = yaml.load(file, Loader=yaml.FullLoader)
-    print(CONFIG)
 
 
 def get_var(key):
