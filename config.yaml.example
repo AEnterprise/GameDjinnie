@@ -1,0 +1,8 @@
+token: "token"
+log_channel: 123
+prefix: "!"
+admin_id: 123
+emoji: {}
+announcement_channel: 123
+tester_role: 123
+reaction_emoji: 😛

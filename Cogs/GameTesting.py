@@ -24,7 +24,8 @@ class GameTesting(Cog):
         self.bot = bot
         self.scheduler_loop.start()
 
-
+    async def cog_check(self, ctx):
+        return ctx.author.id == Configuration.get_var("admin_id")
 
     @commands.command()
     async def add_game(self, ctx, *, name: str):
@@ -227,7 +228,8 @@ class GameTesting(Cog):
     async def _test_report(self, channel, test):
         await test.fetch_related("completions")
         # sort by amount submitted
-        counts = {k: v for k, v in sorted(Counter([c.user for c in test.completions]).items(), key=lambda item: item[1])}
+        counts = {k: v for k, v in
+                  sorted(Counter([c.user for c in test.completions]).items(), key=lambda item: item[1])}
 
         # fetch their keys
         keys = dict()
@@ -256,7 +258,9 @@ class GameTesting(Cog):
         # write codes to the writer
         writer.writerow(["Code", "claimed by", "claimed by username", "claimed in test"])
         for c in codes:
-            writer.writerow([c.code, f"\t{c.claimed_by}", str(self.bot.get_user(c.claimed_by)) if c.claimed_by is not None else "", (str(c.claimed_in.id) if c.claimed_in is not None else "")])
+            writer.writerow(
+                [c.code, f"\t{c.claimed_by}", str(self.bot.get_user(c.claimed_by)) if c.claimed_by is not None else "",
+                 (str(c.claimed_in.id) if c.claimed_in is not None else "")])
         buffer.seek(0)
         file = discord.File(buffer, f"codes for {game.name}.csv")
         await ctx.send(file=file)
