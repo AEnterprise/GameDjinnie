@@ -22,6 +22,7 @@ class GameCode(Model):
     code = fields.CharField(pk=True, max_length=50)
     claimed_by = fields.BigIntField(null=True)
     game = fields.ForeignKeyField("models.Game", related_name="codes")
+    claimed_in = fields.ForeignKeyField("models.GameTest", related_name="codes", null=True)
 
     def __str__(self):
         return self.code

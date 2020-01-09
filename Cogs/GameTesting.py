@@ -1,5 +1,6 @@
 import asyncio
 import csv
+from collections import Counter
 from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 from parser import ParserError
@@ -125,7 +126,8 @@ class GameTesting(Cog):
                         f"Sadly there are no more codes available for {test.game} at this time. Please try again later")
                 else:
                     # try to claim that code but make sure we don't override races
-                    updated = await GameCode.filter(code=code.code, claimed_by=None).update(claimed_by=payload.user_id)
+                    updated = await GameCode.filter(code=code.code, claimed_by=None, claimed_in=test).update(
+                        claimed_by=payload.user_id)
                     # make sure we updated that row
                     if updated is 1:
 
@@ -136,7 +138,7 @@ class GameTesting(Cog):
                             await GameCode.filter(code=code.code).update(clamied_by=None)
 
                         # code claimed, make sure we have more codes left
-                        available = await GameCode.filter(game=test.game, claimed_by=None).count()
+                        available = await GameCode.filter(game=test.game, claimed_by=None, claimed_in=None).count()
                         if available is 0:
                             # this was the last one, inform admin
                             admin = self.bot.get_user(Configuration.get_var('admin_id'))
@@ -217,55 +219,76 @@ class GameTesting(Cog):
         await test.save()
         # find all users who filled in the feedback
         sheet = SheetUtils.get_sheet(test.feedback)
-        await Completion.bulk_create([Completion(test=test, user=u) for u in sheet.col_values(2)[1:]])
+        user_ids = sheet.col_values(2)[1:]
+        await Completion.bulk_create([Completion(test=test, user=u) for u in user_ids])
+        await self._test_report(self.bot.get_user(Configuration.get_var("admin_id")), test)
 
     @commands.command()
-    async def used_codes(self, ctx, game: GameConverter):
+    async def test_report(self, ctx, test: TestConverter):
+        await self._test_report(ctx, test)
+
+    async def _test_report(self, channel, test):
+        await test.fetch_related("completions")
+        # sort by amount submitted
+        counts = {k: v for k, v in sorted(Counter([c.user for c in test.completions]).items(), key=lambda item: item[1])}
+
+        # fetch their keys
+        keys = dict()
+        for code in await GameCode.filter(claimed_in=test):
+            keys[code.claimed_by] = code.code
+
+        # report codes and feedback counts for all users
+        buffer = StringIO()
+        writer = csv.writer(buffer, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(["User id", "username", "Code", "Submitted feedback x times"])
+
+        for user_id, key in keys.items():
+            writer.writerow([f"\t{user_id}", str(self.bot.get_user(user_id)), key, counts.get(user_id, 0)])
+
+        buffer.seek(0)
+        file = discord.File(buffer, "Test report.csv")
+        await channel.send(file=file)
+
+    @commands.command()
+    async def game_codes(self, ctx, game: GameConverter):
         # fetch used codes
-        codes = await GameCode.filter(game=game, claimed_by__not_isnull=True).prefetch_related("game")
+        codes = await GameCode.filter(game=game).prefetch_related("claimed_in")
         # create buffer, don't bother saving to disk
         buffer = StringIO()
         writer = csv.writer(buffer, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         # write codes to the writer
+        writer.writerow(["Code", "claimed by", "claimed by username", "claimed in test"])
         for c in codes:
-            writer.writerow([c.code, c.claimed_by, c.game.name])
+            writer.writerow([c.code, f"\t{c.claimed_by}", str(self.bot.get_user(c.claimed_by)) if c.claimed_by is not None else "", (str(c.claimed_in.id) if c.claimed_in is not None else "")])
         buffer.seek(0)
-        file = discord.File(buffer, "Used codes.csv")
+        file = discord.File(buffer, f"codes for {game.name}.csv")
         await ctx.send(file=file)
 
-    @tasks.loop(hours=1)
-    async def report_task(self):
-        now = datetime.now()
-        if now.weekday() == 5 and now.hour == 17:
-            await self._report(self.bot.get_user(Configuration.get_var("admin_id")))
-
     @commands.command()
-    async def report(self, ctx):
-        await self._report(ctx)
+    async def inactive_report(self, ctx, count: int = 3):
+        await self._report(ctx, count)
 
-    async def _report(self, channel):
-        # did a test end this week?
-        completed = await GameTest.filter(end__gt=datetime.now() - timedelta(days=7), status=TestStatus.ENDED).count()
-        if completed is 0:
-            embed = Embed(title="Weekly report", description="No tests have ended this week, nothing new to report")
-        else:
-            announcement_channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
-            # everyone who filled in feedback for the last 3 tests
-            feedback_providers = set(
-                c.user for test in await GameTest.filter().order_by("-end").limit(3).prefetch_related("completions") for
-                c in test.completions)
-            # all testers
-            testers = set(
-                m.id for m in announcement_channel.guild.get_role(Configuration.get_var("tester_role")).members)
-            # report those who didn't contribute
-            slackers = testers - feedback_providers
-            embed = Embed(title="Weekly report",
-                          description=f"**{len(slackers)} user{'s' if len(slackers) > 1 else ''} did not provide feedback in the last 3 tests:**\n" + "\n".join(
-                              f"{str(self.bot.get_user(s))} ({s})" for s in slackers))
-            embed.add_field(name="Tests completed", value=str(completed))
-            embed.add_field(name="Total testers", value=str(len(testers)))
-            embed.add_field(name="Users who provided feedback", value=str(len(feedback_providers)))
-        await channel.send(embed=embed)
+    async def _report(self, channel, count):
+        announcement_channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
+        # everyone who filled in feedback for the last 3 tests
+        feedback_providers = set(
+            c.user for test in await GameTest.filter().order_by("-end").limit(count).prefetch_related("completions") for
+            c in test.completions)
+        # all testers
+        testers = set(
+            m.id for m in announcement_channel.guild.get_role(Configuration.get_var("tester_role")).members)
+        # report those who didn't contribute
+        slackers = testers - feedback_providers
+
+        buffer = StringIO()
+        writer = csv.writer(buffer, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(["User id", "Username"])
+        # write codes to the writer
+        for s in slackers:
+            writer.writerow([f"\t{s}", str(self.bot.get_user(s))])
+        buffer.seek(0)
+        file = discord.File(buffer, f"did not participate in last {count} tests.csv")
+        await channel.send(file=file)
 
 
 def setup(bot):

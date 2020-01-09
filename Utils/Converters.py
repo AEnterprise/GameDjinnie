@@ -17,7 +17,7 @@ from Utils.Models import Game, GameTest
 class GameConverter(commands.Converter):
     async def convert(self, ctx, arg):
         try:
-            return await Game.get(Q(name=arg, id=arg, join_type="OR"))
+            return await Game.get(Q(name=arg, id=int(arg) if arg.isnumeric() else 0, join_type="OR"))
         except DoesNotExist:
             raise BadArgument("Unknown game")
 
@@ -26,7 +26,7 @@ def dateConverter(arg) -> datetime:
     try:
         date = parse(arg)
     except ParserError:
-        raise BadArgument("Unable to parse that date, suggested format: '<month>/<day>/<year> <hour>:<minutes>'")
+        raise BadArgument("Unable to parse that date, suggested format: '<year>/<month>/<day> <hour>:<minutes>'")
     else:
         if date.toordinal() < datetime.now().toordinal():
             raise BadArgument("Dates can not be in the past!")
@@ -36,7 +36,7 @@ def dateConverter(arg) -> datetime:
 class TestConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
-            return await GameTest.get(Q(id=argument, message=argument, join_type="OR"))
+            return await GameTest.get(Q(id=argument, message=int(argument) if argument.isnumeric() else 0, join_type="OR"))
         except DoesNotExist:
             raise BadArgument("Unknown test")
 
