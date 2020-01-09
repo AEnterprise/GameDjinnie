@@ -2,23 +2,18 @@ import asyncio
 import csv
 from collections import Counter
 from datetime import datetime, timedelta
-from io import BytesIO, StringIO
-from parser import ParserError
+from io import StringIO
 
 import discord
-import gspread
-from dateutil.parser import parse
-from discord import Forbidden, HTTPException, RawReactionActionEvent, Object, Embed
+from discord import Forbidden, RawReactionActionEvent, Object, Embed
 from discord.ext import commands, tasks
 from discord.ext.commands import Cog
-from oauth2client.service_account import ServiceAccountCredentials
 from tortoise.exceptions import DoesNotExist
-from tortoise.query_utils import Q
 from tortoise.transactions import atomic
 
 import humanize
 
-from Utils import Configuration, Questions, Logging, SheetUtils
+from Utils import Configuration, Logging, SheetUtils
 from Utils.Converters import GameConverter, dateConverter, TestConverter, Sheetconverter
 from Utils.Models import GameCode, Game, GameTest, TestStatus, Completion
 from Utils.Utils import with_role_ping
@@ -28,6 +23,8 @@ class GameTesting(Cog):
     def __init__(self, bot):
         self.bot = bot
         self.scheduler_loop.start()
+
+
 
     @commands.command()
     async def add_game(self, ctx, *, name: str):
