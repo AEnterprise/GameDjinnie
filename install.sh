@@ -11,15 +11,15 @@ python3 -m pip install -r requirements.txt
 
 echo "Requirements installed, creating config, please answer the following questions. If you make a mistake you can terminate the script and start again or edit the values in config.yaml"
 
-read -pr "Bot token: " token
-read -pr "ID of the channel for the bot to use for startup and error logs: " channel
-read -pr "Prefix for the bot to use: " prefix
-read -pr "Userid of the bot admin: " admin_id
-read -pr "ID of the channel for test announcements: " announcement_channel
-read -pr "ID of the testers role: " tester_role
-read -pr "Emoji to use for the reaction (send the emoji with a \\ in front of it on discord. if you see a unicode emoji, copy and paste it here, if you see a text copy the number part and paste it here): " reaction_emoji
+read -p "Bot token: " token
+read -p "ID of the channel for the bot to use for startup and error logs: " channel
+read -p "Prefix for the bot to use: " prefix
+read -p "Userid of the bot admin: " admin_id
+read -p "ID of the channel for test announcements: " announcement_channel
+read -p "ID of the testers role: " tester_role
+read -p "Emoji to use for the reaction (send the emoji with a \\ in front of it on discord. if you see a unicode emoji, copy and paste it here, if you see a text copy the number part and paste it here): " reaction_emoji
 
-cat > config/master.json << EOL
+cat > config.yaml << EOL
 token: "$token"
 log_channel: $channel
 prefix: "$prefix"
