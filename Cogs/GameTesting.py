@@ -175,11 +175,12 @@ class GameTesting(Cog):
         await ctx.send("Message updated!")
 
     @commands.command()
-    async def update_end_time(self, ctx, test: TestConverter, new_time: dateConverter):
+    async def update_end_time(self, ctx, test: TestConverter, *, new_time: dateConverter):
         # set new end time
         test.end = new_time
         await test.save()
         # run the scheduler so we pick up on the date being lowered
+        await ctx.send("End time updated!")
         await self.scheduler()
 
     @tasks.loop(minutes=10)

@@ -24,7 +24,7 @@ class GameConverter(commands.Converter):
 
 def dateConverter(arg) -> datetime:
     try:
-        date = parse(arg)
+        date = parse(arg.strip('"'))
     except ParserError:
         raise BadArgument("Unable to parse that date, suggested format: '<year>/<month>/<day> <hour>:<minutes>'")
     else:
