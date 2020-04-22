@@ -193,8 +193,8 @@ class GameTesting(Cog):
             await self.reminder(t)
 
         # schedule ending of the tests
-        for t in await GameTest.filter(status__not=TestStatus.STARTED, end__lt=datetime.now() + timedelta(hours=1)):
-            self.bot.loop.create_task(self.delayer((t.end - datetime.now()).total_seconds(), self.ender(t)))
+        for t in await GameTest.filter(status__not=TestStatus.STARTED, end__lt=datetime.now()):
+            await self.ender(t)
 
     async def delayer(self, delay, todo):
         await asyncio.sleep(delay)
