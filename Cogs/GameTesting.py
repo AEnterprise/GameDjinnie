@@ -124,10 +124,10 @@ class GameTesting(Cog):
                         f"Sadly there are no more codes available for {test.game} at this time. Please try again later")
                 else:
                     # try to claim that code but make sure we don't override races
-                    updated = await GameCode.filter(code=code.code, claimed_by=None, claimed_in=test).update(
+                    updated = await GameCode.filter(code=code.code, claimed_by=None).update(
                         claimed_by=payload.user_id)
                     # make sure we updated that row
-                    if updated is 1:
+                    if updated == 1:
 
                         try:
                             await user.send(f"Your code for {test.game} is {code}!")
@@ -190,7 +190,7 @@ class GameTesting(Cog):
     async def scheduler(self):
         # schedule 24 notices
         for t in await GameTest.filter(status=TestStatus.STARTED, end__lt=datetime.now() + timedelta(days=1)):
-            self.bot.loop.create_task(self.delayer((t.end - datetime.now()).total_seconds(), self.reminder(t)))
+            await self.reminder(t)
 
         # schedule ending of the tests
         for t in await GameTest.filter(status__not=TestStatus.STARTED, end__lt=datetime.now() + timedelta(hours=1)):
