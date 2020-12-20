@@ -38,6 +38,16 @@ class GameTest(Model):
     def __str__(self):
         return f"Test {self.game}-{self.message}: {TestStatus._value2member_map_[self.status]} (end at {self.end})"
 
+class NewGameTest(Model):
+    game = fields.ForeignKeyField("models.Game", related_name="newAnnouncements")
+    message = fields.BigIntField(unique=True)
+    end = fields.DatetimeField()
+    status = fields.IntEnumField(TestStatus, default=TestStatus.STARTED)
+    feedback = fields.CharField(max_length=150, null=True)
+
+    def __str__(self):
+        return f"Test {self.game}-{self.message}: {TestStatus._value2member_map_[self.status]} (end at {self.end})"
+
 
 class Completion(Model):
     id = fields.IntField(pk=True)

@@ -11,7 +11,7 @@ from dateutil.parser import parse
 from tortoise.query_utils import Q
 
 from Utils import SheetUtils
-from Utils.Models import Game, GameTest
+from Utils.Models import Game, GameTest, NewGameTest
 
 
 class GameConverter(commands.Converter):
@@ -36,7 +36,7 @@ def dateConverter(arg) -> datetime:
 class TestConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
-            return await GameTest.get(Q(id=argument, message=int(argument) if argument.isnumeric() else 0, join_type="OR"))
+            return await NewGameTest.get(Q(id=argument, message=int(argument) if argument.isnumeric() else 0, join_type="OR"))
         except DoesNotExist:
             raise BadArgument("Unknown test")
 
@@ -44,7 +44,7 @@ class TestConverter(commands.Converter):
 class Sheetconverter(commands.Converter):
     async def convert(self, ctx, argument):
         # make sure it wasn't used already
-        if await GameTest.get_or_none(feedback=argument) is not None:
+        if await NewGameTest.get_or_none(feedback=argument) is not None:
             raise BadArgument("This sheet was already used for a previous test!")
         try:
             SheetUtils.get_sheet(argument)

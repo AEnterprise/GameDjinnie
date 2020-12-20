@@ -11,11 +11,13 @@ from discord.ext.commands import Cog
 from tortoise.exceptions import DoesNotExist
 from tortoise.transactions import atomic
 
+from typing import Optional
+
 import humanize
 
 from Utils import Configuration, Logging, SheetUtils
 from Utils.Converters import GameConverter, dateConverter, TestConverter, Sheetconverter
-from Utils.Models import GameCode, Game, GameTest, TestStatus, Completion
+from Utils.Models import GameCode, Game, GameTest, TestStatus, Completion, NewGameTest
 from Utils.Utils import with_role_ping
 
 
@@ -71,13 +73,13 @@ class GameTesting(Cog):
 
     @commands.command()
     @with_role_ping()
-    async def test(self, ctx, game: GameConverter, until: dateConverter, sheet_url: Sheetconverter, *, announcement):
+    async def test(self, ctx, game: GameConverter, until: dateConverter, sheet_url: Optional[Sheetconverter] = None, *, announcement):
         channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
         role = channel.guild.get_role(Configuration.get_var("tester_role"))
         reaction = Configuration.get_var("reaction_emoji")
         message = await channel.send(f"{announcement}\n{role.mention}")
         await message.add_reaction(reaction)
-        gt = await GameTest.create(game=game, message=message.id, end=until, feedback=sheet_url)
+        gt = await NewGameTest.create(game=game, message=message.id, end=until, feedback=sheet_url)
         await ctx.send(f"Test running until {humanize.naturaldate(gt.end)} has started!")
 
     @commands.Cog.listener()
@@ -100,7 +102,7 @@ class GameTesting(Cog):
                 await message.remove_reaction(payload.emoji, Object(payload.user_id))
 
         try:
-            test = await GameTest.get(message=payload.message_id)
+            test = await NewGameTest.get(message=payload.message_id)
         except DoesNotExist:
             return  # not an announcement, nothing to do
         else:
@@ -159,7 +161,7 @@ class GameTesting(Cog):
     @commands.command()
     async def running(self, ctx):
         channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
-        active_tests = await GameTest.filter(status__not=TestStatus.ENDED).order_by("-end").limit(20).prefetch_related(
+        active_tests = await NewGameTest.filter(status__not=TestStatus.ENDED).order_by("-end").limit(20).prefetch_related(
             "game")
         embed = Embed(description="\n".join(
             f"[{test.id} - {test.game.name}: ending in {humanize.naturaltime(datetime.now() - test.end)}](https://canary.discordapp.com/channels/{channel.guild.id}/{channel.id}/{test.message})"
@@ -189,11 +191,11 @@ class GameTesting(Cog):
 
     async def scheduler(self):
         # schedule 24 notices
-        for t in await GameTest.filter(status=TestStatus.STARTED, end__lt=datetime.now() + timedelta(days=1)):
+        for t in await NewGameTest.filter(status=TestStatus.STARTED, end__lt=datetime.now() + timedelta(days=1)):
             await self.reminder(t)
 
         # schedule ending of the tests
-        for t in await GameTest.filter(status__not=TestStatus.STARTED, end__lt=datetime.now()):
+        for t in await NewGameTest.filter(status__not=TestStatus.STARTED, end__lt=datetime.now()):
             await self.ender(t)
 
     async def delayer(self, delay, todo):
@@ -217,11 +219,12 @@ class GameTesting(Cog):
         # mark as completed in the database
         test.status = TestStatus.ENDED
         await test.save()
-        # find all users who filled in the feedback
-        sheet = SheetUtils.get_sheet(test.feedback)
-        user_ids = sheet.col_values(2)[1:]
-        await Completion.bulk_create([Completion(test=test, user=u) for u in user_ids])
-        await self._test_report(self.bot.get_user(Configuration.get_var("admin_id")), test)
+        if test.feedback is not None:
+            # find all users who filled in the feedback
+            sheet = SheetUtils.get_sheet(test.feedback)
+            user_ids = sheet.col_values(2)[1:]
+            await Completion.bulk_create([Completion(test=test, user=u) for u in user_ids])
+            await self._test_report(self.bot.get_user(Configuration.get_var("admin_id")), test)
 
     @commands.command()
     async def test_report(self, ctx, test: TestConverter):
@@ -275,7 +278,7 @@ class GameTesting(Cog):
         announcement_channel = self.bot.get_channel(Configuration.get_var("announcement_channel"))
         # everyone who filled in feedback for the last 3 tests
         feedback_providers = set(
-            c.user for test in await GameTest.filter().order_by("-end").limit(count).prefetch_related("completions") for
+            c.user for test in await NewGameTest.filter().order_by("-end").limit(count).prefetch_related("completions") for
             c in test.completions)
         # all testers
         testers = set(

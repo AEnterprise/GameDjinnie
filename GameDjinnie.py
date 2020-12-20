@@ -3,6 +3,7 @@ from discord.ext.commands import Bot
 from tortoise import Tortoise
 
 from Utils import Logging, Configuration, Utils, Emoji
+from Utils.Models import NewGameTest, GameTest
 
 
 class GameJinnie(Bot):
@@ -22,6 +23,11 @@ class GameJinnie(Bot):
             )
             await Tortoise.generate_schemas()
             Logging.info("Database connected")
+            if await NewGameTest.filter().first() is None:
+                to_insert = list()
+                for test in await GameTest.all().prefetch_related("game"):
+                    to_insert.append(NewGameTest(game=test.game, message=test.message, end=test.end, status=test.status, feedback=test.feedback))
+                await NewGameTest.bulk_create(to_insert)
             Logging.info("Loading cogs")
             for cog in ["GameTesting"]:
                 try:
